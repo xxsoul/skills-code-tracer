@@ -1,0 +1,99 @@
+{
+  "skill_name": "code-impact-tracker",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "分析 GroupAdd 函数的业务影响，输出报告到当前目录",
+      "expected_output": "生成 Markdown 和 JSON 格式的影响报告，包含调用链回溯和业务入口识别",
+      "files": [],
+      "assertions": [
+        {
+          "name": "markdown_report_generated",
+          "description": "是否生成了 Markdown 格式的影响报告文件",
+          "check": "outputs 目录下存在 .md 文件"
+        },
+        {
+          "name": "json_report_generated",
+          "description": "是否生成了 JSON 格式的影响报告文件",
+          "check": "outputs 目录下存在 .json 文件"
+        },
+        {
+          "name": "contains_call_chain",
+          "description": "报告是否包含调用链回溯信息",
+          "check": "报告内容中有调用链或 Layer 相关信息"
+        },
+        {
+          "name": "identifies_business_entry",
+          "description": "报告是否识别了业务入口点（API 或配置）",
+          "check": "报告中有 API 入口或业务入口相关信息"
+        },
+        {
+          "name": "contains_impact_summary",
+          "description": "报告是否包含影响摘要（影响数量、模块等）",
+          "check": "报告中有影响摘要或统计数据"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "分析最近的 git 提交 09ac4b9f8 的业务影响范围",
+      "expected_output": "识别提交涉及的文件变更，回溯每个变更函数的调用链，汇总业务影响",
+      "files": [],
+      "assertions": [
+        {
+          "name": "markdown_report_generated",
+          "description": "是否生成了 Markdown 格式的影响报告文件",
+          "check": "outputs 目录下存在 .md 文件"
+        },
+        {
+          "name": "json_report_generated",
+          "description": "是否生成了 JSON 格式的影响报告文件",
+          "check": "outputs 目录下存在 .json 文件"
+        },
+        {
+          "name": "identifies_commit_changes",
+          "description": "报告是否识别了 git 提交的变更文件",
+          "check": "报告中有 git 提交信息或变更文件列表"
+        },
+        {
+          "name": "contains_call_chain",
+          "description": "报告是否包含调用链回溯信息",
+          "check": "报告内容中有调用链或 Layer 相关信息"
+        },
+        {
+          "name": "identifies_business_entry",
+          "description": "报告是否识别了业务入口点",
+          "check": "报告中有 API 入口或业务入口相关信息"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "分析 websrv/public_websrv/userinterface/lands.go:52 这个位置的代码对哪些业务有影响",
+      "expected_output": "识别该位置是路由注册点，回溯到对应的 handler，输出影响报告",
+      "files": [],
+      "assertions": [
+        {
+          "name": "markdown_report_generated",
+          "description": "是否生成了 Markdown 格式的影响报告文件",
+          "check": "outputs 目录下存在 .md 文件"
+        },
+        {
+          "name": "json_report_generated",
+          "description": "是否生成了 JSON 格式的影响报告文件",
+          "check": "outputs 目录下存在 .json 文件"
+        },
+        {
+          "name": "identifies_location_context",
+          "description": "报告是否正确识别了指定位置的上下文",
+          "check": "报告中有 lands.go 或路由相关信息"
+        },
+        {
+          "name": "identifies_business_entry",
+          "description": "报告是否识别了业务入口点",
+          "check": "报告中有 API 入口或路由信息"
+        }
+      ]
+    }
+  ]
+}

@@ -140,6 +140,72 @@
           "check": "报告中有 API 入口或路由信息"
         }
       ]
+    },
+    {
+      "id": 6,
+      "prompt": "我要提测，帮我分析当前分支相对主干分支的变更影响",
+      "expected_output": "自动推导主干分支，用户确认后执行分支对比分析，生成提测影响报告（包含提测检查清单和测试建议）",
+      "files": [],
+      "assertions": [
+        {
+          "name": "branch_detection",
+          "description": "是否正确检测了当前分支和主干分支",
+          "check": "报告中有当前分支名和主干分支名（如 master/main）"
+        },
+        {
+          "name": "提测_report_filename",
+          "description": "是否使用正确的提测报告文件名格式",
+          "check": "文件名包含 '提测影响报告' 或类似字样"
+        },
+        {
+          "name": "测试_checklist",
+          "description": "报告是否包含提测检查清单",
+          "check": "报告中有 '提测检查清单' 或 '测试建议' 章节"
+        },
+        {
+          "name": "markdown_report_generated",
+          "description": "是否生成了 Markdown 格式的影响报告文件",
+          "check": "outputs 目录下存在 .md 文件"
+        },
+        {
+          "name": "identifies_commit_changes",
+          "description": "报告是否识别了分支变更文件",
+          "check": "报告中有变更文件列表或 git diff 相关信息"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "我要投产，当前分支是 online/online_260423",
+      "expected_output": "检测主干分支，用户确认后执行分支对比分析，生成投产影响报告（包含上线检查清单、上线风险和需要通知的人员）",
+      "files": [],
+      "assertions": [
+        {
+          "name": "branch_detection",
+          "description": "是否正确检测了当前分支和主干分支",
+          "check": "报告中有当前分支名（online/online_260423）和主干分支名"
+        },
+        {
+          "name": "投产_report_filename",
+          "description": "是否使用正确的投产报告文件名格式",
+          "check": "文件名包含 '投产影响报告' 或类似字样"
+        },
+        {
+          "name": "上线_checklist",
+          "description": "报告是否包含上线检查清单",
+          "check": "报告中有 '上线检查清单' 章节"
+        },
+        {
+          "name": "上线_risk",
+          "description": "报告是否包含上线风险章节",
+          "check": "报告中有 '上线风险' 章节"
+        },
+        {
+          "name": "notify_persons",
+          "description": "报告是否包含需要通知的人员章节",
+          "check": "报告中有 '需要通知的人员' 章节"
+        }
+      ]
     }
   ]
 }

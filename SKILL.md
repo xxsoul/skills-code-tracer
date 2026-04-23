@@ -1,11 +1,106 @@
 ---
 name: code-impact-tracker
-description: Track code changes' impact on business scope through LSP call chain tracing. Use this skill when users ask about code impact analysis, business scope affected by code changes, call chain tracing, "what does this function affect", "which APIs call this code", or need impact reports with git commit references. Supports any language with LSP available.
+description: Track code changes' impact on business scope through LSP call chain tracing. Use this skill when users ask about code impact analysis, business scope affected by code changes, call chain tracing, "what does this function affect", "which APIs call this code", or need impact reports with git commit references. **IMPORTANT:** Also use this skill when users say "我要提测", "我要投产", "准备提测", "准备投产", "提测分析", "投产分析", or any similar phrases about testing/deploying their current branch. Supports any language with LSP available.
 ---
 
 # Code Impact Tracker
 
 追踪代码变更对业务的影响范围，通过 LSP 向上回溯调用链，最终生成业务影响报告。
+
+## 子命令
+
+### 提测 / 投产
+
+当用户说 "我要提测"、"我要投产"、"准备提测"、"准备投产" 等类似表达时，执行以下流程：
+
+**Step 1: 推导主干分支**
+
+自动检测项目的主干分支：
+
+```bash
+# 方法 1: 检查 origin/HEAD 指向
+git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'
+
+# 方法 2: 直接检查常见主干分支名
+git branch -a | grep -E 'main|master'
+```
+
+推导规则：
+1. 如果 `origin/HEAD` 指向某个分支，优先使用该分支
+2. 如果没有 `origin/HEAD`，检查是否存在 `master` 或 `main`
+3. 默认推荐 `master`（国内项目常见）
+
+**Step 2: 用户确认主干分支**
+
+使用 AskUserQuestion 让用户确认：
+
+```
+检测到当前分支: <当前分支名>
+推荐的主干分支: <推导出的主干分支>
+
+请确认要对比的主干分支：
+1. 使用推荐的 <主干分支>
+2. 使用 main 分支
+3. 使用 master 分支
+4. 手动输入其他分支名、tag 或 commit ID
+```
+
+**Step 3: 执行分支对比分析**
+
+确认后，执行分支对比分析（使用 1.2 的流程）：
+
+```bash
+git diff <主干分支>..<当前分支> --stat
+git diff <主干分支>..<当前分支> --name-only
+```
+
+**Step 4: 生成报告**
+
+报告文件名格式：
+- 提测: `提测影响报告_<当前分支>_YYYYMMDD.md`
+- 投产: `投产影响报告_<当前分支>_YYYYMMDD.md`
+
+报告额外章节：
+
+**提测报告增加**:
+```markdown
+## 提测检查清单
+
+- [ ] 核心功能已自测通过
+- [ ] 边界条件已覆盖测试
+- [ ] 新增配置项已同步到测试环境
+- [ ] 依赖的外部服务已确认可用
+
+## 测试建议
+
+| 测试类型 | 覆盖范围 | 优先级 |
+|---------|---------|--------|
+| 功能测试 | <具体功能> | P0 |
+| 回归测试 | <受影响的 API> | P1 |
+```
+
+**投产报告增加**:
+```markdown
+## 上线检查清单
+
+- [ ] 测试环境验证通过
+- [ ] 配置文件已同步到生产环境
+- [ ] 相关人员已通知
+- [ ] 回滚方案已准备
+
+## 上线风险
+
+| 风险项 | 影响范围 | 应对措施 |
+|-------|---------|---------|
+| <风险描述> | <影响模块> | <应对方案> |
+
+## 需要通知的人员
+
+- 运维团队: <具体通知内容>
+- 开发团队: <具体通知内容>
+```
+
+---
 
 ## 核心流程
 
@@ -422,12 +517,27 @@ grep_pattern = "\\.FunctionName\\(|FunctionName\\("
 
 ### 6.1 报告文件名
 
+根据分析类型选择不同的文件名格式：
+
+**普通分析报告**:
 ```
 impact_report_{identifier}_{date}.md
 impact_report_{identifier}_{date}.json
 
 identifier: 函数名、提交哈希简写、或自定义标识
 date: YYYYMMDD 格式
+```
+
+**提测报告**:
+```
+提测影响报告_{当前分支}_{date}.md
+提测影响报告_{当前分支}_{date}.json
+```
+
+**投产报告**:
+```
+投产影响报告_{当前分支}_{date}.md
+投产影响报告_{当前分支}_{date}.json
 ```
 
 ### 6.2 Markdown 报告结构

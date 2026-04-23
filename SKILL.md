@@ -10,7 +10,7 @@ description: Track code changes' impact on business scope through LSP call chain
 ## 核心流程
 
 ```
-输入起点 → LSP回溯调用链 → 识别业务入口 → 汇总影响范围 → 生成报告
+输入起点 → LSP 回溯调用链 → 识别业务入口 → 汇总影响范围 → 生成报告
 ```
 
 ---
@@ -19,11 +19,11 @@ description: Track code changes' impact on business scope through LSP call chain
 
 用户可通过三种方式指定分析起点：
 
-### 1.1 位置格式 (文件:行号)
+### 1.1 位置格式 (文件：行号)
 
 ```
-文件路径:行号[:列号]
-例如: websrv/public_websrv/userinterface/lands.go:52
+文件路径：行号 [: 列号]
+例如：websrv/public_websrv/userinterface/lands.go:52
 ```
 
 解析步骤：
@@ -31,24 +31,96 @@ description: Track code changes' impact on business scope through LSP call chain
 2. 确认行号有效（不超过文件行数）
 3. 定位到该位置的符号（函数/方法/变量）
 
-### 1.2 Git 提交编号
+### 1.2 Git 提交编号 / 分支对比
 
 ```
 提交哈希 (完整或简短)
-例如: 09ac4b9f8 或 09ac4b9
+例如：09ac4b9f8 或 09ac4b9
+
+分支对比格式:
+git diff <base>..<branch>
+例如：git diff master..online/online_260423
 ```
 
 解析步骤：
-1. 使用 `git show --stat <commit>` 查看变更文件列表
-2. 使用 `git diff <commit>^..<commit>` 查看具体变更内容
-3. 提取所有变更的函数/方法作为分析起点
-4. 若变更较多，询问用户是否全部分析或选择特定文件
+
+**Step 1: 获取变更文件列表**
+```bash
+git diff <base>..<branch> --stat
+git diff <base>..<branch> --name-only
+```
+
+**Step 2: 识别变更类型**
+对每个变更文件，判断变更类型：
+| 变更类型 | 判断方式 | LSP 处理策略 |
+|---------|---------|-------------|
+| 新增文件 | `git status` 显示 A | 无需回溯 (无调用方) |
+| 删除文件 | `git status` 显示 D | 需查找谁调用了被删除的代码 |
+| 修改文件 | `git status` 显示 M | **需要 LSP 回溯** |
+| 重命名文件 | `git status` 显示 R | 需确认调用点是否受影响 |
+
+**Step 3: 提取变更的函数/方法**
+对每个修改的文件：
+```bash
+git diff <base>..<branch> -- <file>
+```
+解析 diff 输出，提取：
+- 函数定义行变更（`func xxx` 行附近）
+- 函数体变更（行号范围）
+- 如果是结构体/接口变更，记录受影响的方法
+
+**Step 4: LSP 回溯调用链（核心步骤）**
+
+对每个变更的函数，执行 LSP 回溯：
+
+```
+函数变更起点
+    ↓ documentSymbol 精确定位函数名
+    ↓ prepareCallHierarchy 获取调用层级项
+    ↓ incomingCalls 获取第 1 层调用方
+    ↓ 对每个调用方重复 incomingCalls
+    ↓ 回溯直到业务入口点 (API handler / 配置驱动)
+```
+
+**Step 5: 汇总影响范围**
+
+构建影响树：
+```
+变更文件 1
+├── 变更函数 A
+│   ├── 影响 API-1: /path/to/api
+│   ├── 影响 API-2: /path/to/api
+│   └── 影响定时任务：cron_job_xxx
+├── 变更函数 B
+│   └── ...
+└── 变更结构体 C
+    └── 影响所有引用该结构体的函数
+
+变更文件 2
+└── ...
+```
+
+**Step 6: 生成报告**
+
+报告需包含：
+1. 变更文件清单
+2. 每个变更函数的调用链
+3. 受影响的 API 和业务入口
+4. 建议的测试覆盖范围
+
+**Step 7: 变更较多时的处理**
+
+如果变更文件超过 10 个或函数超过 20 个：
+1. 按模块/目录分组
+2. 优先分析核心模块
+3. 询问用户是否全部分析或选择特定文件/模块
+4. 使用表格汇总，避免报告过长
 
 ### 1.3 函数名搜索
 
 ```
 函数名或方法名
-例如: ProjectGroupAdd 或 project_group.GroupAdd
+例如：ProjectGroupAdd 或 project_group.GroupAdd
 ```
 
 解析步骤：
@@ -58,9 +130,9 @@ description: Track code changes' impact on business scope through LSP call chain
 
 ---
 
-## Step 2: LSP 环境检测
+## Step 2: LSP 环境检测与启动等待
 
-在开始回溯前，**必须**检测 LSP 是否可用：
+在开始回溯前，**必须**检测 LSP 是否可用，并确保 LSP 已完全启动。
 
 ### 2.1 检测方法
 
@@ -75,10 +147,33 @@ description: Track code changes' impact on business scope through LSP call chain
 | Rust | rust-analyzer | 检查进程或配置 |
 | C/C++ | clangd | 检查 `clangd --version` |
 
-### 2.2 LSP 不可用时的处理
+### 2.2 LSP 启动等待机制
+
+LSP 服务器启动需要时间，直接调用可能返回 "server is starting" 错误。
+
+**等待流程**：
+
+```
+Step 1: 发送 documentSymbol 触发 LSP 启动
+    ↓ 如果成功，LSP 已就绪
+    ↓ 如果返回 "server is starting" 错误
+
+Step 2: 等待 3-5 秒
+    ↓ 重试 documentSymbol
+
+Step 3: 如果仍失败，等待并重试（最多 3 次）
+    ↓ 如果 3 次后仍失败，使用 Grep 备选方案
+```
+
+**判断 LSP 是否就绪**：
+- 成功返回 documentSymbol 结果 → LSP 就绪
+- 返回 "server is starting" 或类似错误 → LSP 未就绪，需要等待
+- 返回其他错误 → 可能是文件无法解析，需进一步诊断
+
+### 2.3 LSP 不可用时的处理
 
 如果 LSP 不可用：
-1. **明确告知用户**：当前环境没有配置该语言的 LSP
+1. **明确告知用户**：当前环境没有配置该语言的 LSP 或 LSP 启动失败
 2. **提供安装指引**：列出常见 LSP 安装方法
 3. **询问是否继续**：是否使用备选方案（grep 搜索调用）
 
@@ -90,6 +185,49 @@ description: Track code changes' impact on business scope through LSP call chain
 
 ## Step 3: LSP 调用链回溯
 
+### 3.0 位置定位优化
+
+`prepareCallHierarchy` 要求光标定位在函数名上，定位到参数位置会报错 "xxx is not a function"。
+
+**问题场景**：
+- 用户指定 `file.go:40` 但未指定列号
+- 第 40 行是 `func FeatureSchedule(ctx *fasthttp.RequestCtx)`
+- 默认列号 1 定位到 `func` 关键字
+- 列号 18 定位到参数 `ctx`，会报错 "ctx is not a function"
+
+**解决方案 - 使用 documentSymbol 精确定位**：
+
+```
+Step 1: 对目标文件调用 documentSymbol
+    ↓ 获取文件中所有符号的位置信息
+
+Step 2: 根据目标行号匹配对应符号
+    ↓ 例如：documentSymbol 返回 "FeatureSchedule (Function) - Line 40"
+
+Step 3: 读取该行内容，计算函数名起始列号
+    ↓ 行内容："func FeatureSchedule(ctx *fasthttp.RequestCtx) {"
+    ↓ 函数名 "FeatureSchedule" 起始于第 6 列 (func + 空格 = 5 个字符)
+
+Step 4: 使用精确列号调用 prepareCallHierarchy
+    ↓ character = 6 (指向函数名第一个字符)
+```
+
+**列号计算规则**：
+
+| 语言 | 函数定义格式 | 函数名列号计算 |
+|------|-------------|---------------|
+| Go | `func Name(params)` | `len("func ") + 1 = 6` |
+| Python | `def name(params):` | `len("def ") + 1 = 5` |
+| Java | `public void name(params)` | 需解析到方法名位置 |
+| TypeScript | `function name(params)` | `len("function ") + 1 = 10` |
+
+**重要提示**：当用户指定 `file:line` 但未指定列号时，**不要**使用默认列号 1，因为：
+- 列号 1 通常指向行首空白或 `func`/`def` 关键字
+- LSP 的 `prepareCallHierarchy` 要求定位在标识符（函数名）上
+- 定位到关键字会返回 "identifier not found" 错误
+
+**推荐做法**：始终使用 documentSymbol 获取符号的精确位置。
+
 ### 3.1 回溯算法
 
 使用 LSP 的 `prepareCallHierarchy` → `incomingCalls` 功能：
@@ -98,11 +236,11 @@ description: Track code changes' impact on business scope through LSP call chain
 当前层 (起点)
     ↓ prepareCallHierarchy 获取调用层级项
     ↓ incomingCalls 获取所有调用方
-第1层调用方
+第 1 层调用方
     ↓ 对每个调用方重复 prepareCallHierarchy + incomingCalls
-第2层调用方
+第 2 层调用方
     ↓ ...
-第N层调用方
+第 N 层调用方
 ```
 
 ### 3.2 深度控制
@@ -145,6 +283,51 @@ description: Track code changes' impact on business scope through LSP call chain
 - **无调用方**：LSP 返回空结果
 - **外部依赖**：调用来自第三方包（标注为外部依赖）
 - **用户停止**：用户选择停止回溯
+
+### 3.5 LSP 错误处理
+
+在回溯过程中可能遇到各种 LSP 错误，需要正确处理：
+
+**常见错误类型**：
+
+| 错误信息 | 原因 | 处理方式 |
+|---------|------|---------|
+| "server is starting" | LSP 未完全启动 | 等待 3-5 秒后重试 |
+| "xxx is not a function" | 光标定位到参数位置 | 使用 documentSymbol 重新定位 |
+| "identifier not found" | 定位到关键字或空白 | 使用 documentSymbol 定位函数名 |
+| "No hover information" | 位置不在符号上 | 检查位置并调整 |
+| "Cannot send notification" | LSP 连接断开 | 重启 LSP 或使用备选方案 |
+
+**错误恢复流程**：
+
+```
+遇到 LSP 错误
+    ↓ 记录错误类型和位置
+
+Step 1: 判断错误类型
+    ↓ "server is starting" → 等待后重试
+    ↓ "xxx is not a function" → 重新定位
+
+Step 2: 重试（最多 2 次）
+    ↓ 如果成功，继续回溯
+    ↓ 如果仍失败，标记该分支为 "LSP 分析失败"
+
+Step 3: 对于失败分支
+    ↓ 使用 Grep 搜索函数名作为备选
+    ↓ 或标记为 "需要人工确认"
+```
+
+**Grep 备选方案**：
+
+当 LSP 无法获取调用方时，使用 Grep 搜索：
+```
+grep_pattern = "\\.FunctionName\\(|FunctionName\\("
+```
+
+注意 Grep 方案的局限：
+- 无法区分函数定义和调用
+- 可能遗漏通过变量/接口调用的情况
+- 无法获取精确的调用位置（行号）
 
 ---
 
@@ -212,11 +395,11 @@ description: Track code changes' impact on business scope through LSP call chain
 ```
 起点函数
 ├── 影响 API-1: 项目组添加
-│   ├── 调用链: Handler → Service → 起点
-│   └── 业务影响: 用户无法添加项目组
+│   ├── 调用链：Handler → Service → 起点
+│   └── 业务影响：用户无法添加项目组
 ├── 影响 API-2: 项目组列表
 │   └── ...
-├── 影响配置: project_group.yaml
+├── 影响配置：project_group.yaml
 │   └── ...
 ```
 
@@ -254,7 +437,7 @@ date: YYYYMMDD 格式
 
 ## 基本信息
 - **分析日期**: YYYY-MM-DD HH:MM:SS
-- **分析起点**: 文件路径:行号
+- **分析起点**: 文件路径：行号
 - **起点符号**: FunctionName
 - **Git 提交**: commit_hash (如适用)
 - **回溯深度**: N 层
@@ -283,7 +466,7 @@ date: YYYYMMDD 格式
 
 | 序号 | 模块名 | 影响程度 | 影响范围 |
 |-----|-------|---------|---------|
-| 1 | 模块A | 直接 | 功能描述 |
+| 1 | 模块 A | 直接 | 功能描述 |
 
 ## 调用链详情
 
@@ -291,9 +474,9 @@ date: YYYYMMDD 格式
 ```
 [Layer 0] FunctionName (起点)
     ↑ called by
-[Layer 1] CallerFunc (文件:行号)
+[Layer 1] CallerFunc (文件：行号)
     ↑ called by
-[Layer 2] HandlerFunc (文件:行号)
+[Layer 2] HandlerFunc (文件：行号)
     ↑ [API 入口] POST /path/to/api
 ```
 
@@ -400,24 +583,24 @@ code-impact-tracker-workspace/
 ### 示例 1: 从函数名开始
 
 ```
-用户: 分析 GroupAdd 函数的业务影响
+用户：分析 GroupAdd 函数的业务影响
 
 助手:
 1. 搜索 GroupAdd 定义位置
-2. 确认起点: project_group.go:25
+2. 确认起点：project_group.go:25
 3. 检测 LSP (gopls) 可用
 4. 开始 6 层回溯...
    Layer 1: 找到 2 个调用方
    Layer 2: 找到 3 个调用方
    ...
-5. 识别业务入口: POST /project_group/add
+5. 识别业务入口：POST /project_group/add
 6. 生成报告
 ```
 
 ### 示例 2: 从 Git 提交开始
 
 ```
-用户: 分析提交 09ac4b9f8 的业务影响
+用户：分析提交 09ac4b9f8 的业务影响
 
 助手:
 1. git show 09ac4b9f8 --stat
@@ -425,7 +608,7 @@ code-impact-tracker-workspace/
    - config.yaml
    - handler.go
    - service.go
-3. 提取变更函数: ConfigLoader, HandleRequest, ProcessData
+3. 提取变更函数：ConfigLoader, HandleRequest, ProcessData
 4. 对每个函数进行回溯分析
 5. 汇总所有影响
 6. 生成报告
@@ -434,15 +617,35 @@ code-impact-tracker-workspace/
 ### 示例 3: 从位置开始
 
 ```
-用户: 分析 websrv/public_websrv/userinterface/lands.go:52 的业务影响
+用户：分析 websrv/public_websrv/userinterface/lands.go:52 的业务影响
 
 助手:
 1. 定位到 router.Post("/project_group/add", ...)
 2. 检测 LSP 可用
 3. 回溯调用链
 4. 识别这是 API 路由注册点
-5. 确认业务: 项目组添加接口
+5. 确认业务：项目组添加接口
 6. 生成报告
+```
+
+### 示例 4: 分支对比分析
+
+```
+用户：分析 online/online_260423 分支相对 master 的变更影响
+
+助手:
+1. git diff master..online/online_260423 --stat
+2. 变更 90+ 文件，按模块分组:
+   - utils/alarm/: 告警代理 (新增)
+   - websrv/online_inference/defrag/: 碎片整理 (新增)
+   - websrv/online_inference/crontab/scale_event.go: 扩缩容告警优化
+3. 对每个修改的函数进行 LSP 回溯:
+   - SendAlarmToWeChat → GpAlarmProxy.ProcessAlarm
+   - 识别调用点：scale_event.go 中的扩缩容监控
+4. 汇总影响范围:
+   - 影响 API: 扩缩容监控定时任务
+   - 影响配置：AlertManager 地址配置
+5. 生成报告
 ```
 
 ---
@@ -454,3 +657,4 @@ code-impact-tracker-workspace/
 3. **深度控制灵活**：让用户决定是否深入回溯
 4. **报告即时保存**：每完成一部分就保存中间数据，防止中断丢失
 5. **跨语言通用**：设计适配多语言，但具体 LSP 调用可能有差异
+6. **分支对比分析**：变更较多时按模块分组，优先分析核心模块

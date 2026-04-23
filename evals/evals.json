@@ -94,6 +94,52 @@
           "check": "报告中有 API 入口或路由信息"
         }
       ]
+    },
+    {
+      "id": 4,
+      "prompt": "分析 FeatureSchedule 函数的业务影响，注意 LSP 可能需要等待启动",
+      "expected_output": "成功等待 LSP 启动后完成调用链回溯，生成完整报告",
+      "files": [],
+      "assertions": [
+        {
+          "name": "markdown_report_generated",
+          "description": "是否生成了 Markdown 格式的影响报告文件",
+          "check": "outputs 目录下存在 .md 文件"
+        },
+        {
+          "name": "lsp_wait_handled",
+          "description": "是否正确处理了 LSP 启动等待（没有因 server is starting 错误而失败）",
+          "check": "报告中没有 LSP 启动错误相关信息，或明确说明使用了备选方案"
+        },
+        {
+          "name": "identifies_business_entry",
+          "description": "报告是否识别了业务入口点",
+          "check": "报告中有 API 入口或路由信息"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "分析 algolab/feature_engineering/problemdomain/feature_schedule.go:40 位置的业务影响，这个位置是函数定义行但可能定位到参数",
+      "expected_output": "正确使用 documentSymbol 定位到函数名而非参数，完成调用链回溯",
+      "files": [],
+      "assertions": [
+        {
+          "name": "markdown_report_generated",
+          "description": "是否生成了 Markdown 格式的影响报告文件",
+          "check": "outputs 目录下存在 .md 文件"
+        },
+        {
+          "name": "position定位_correct",
+          "description": "是否正确定位到函数名而非参数位置",
+          "check": "报告中没有 'is not a function' 错误，且正确识别 FeatureSchedule 函数"
+        },
+        {
+          "name": "identifies_business_entry",
+          "description": "报告是否识别了业务入口点",
+          "check": "报告中有 API 入口或路由信息"
+        }
+      ]
     }
   ]
 }
